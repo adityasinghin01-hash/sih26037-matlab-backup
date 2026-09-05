@@ -48,14 +48,26 @@ ctx0.sSlow = 187;  ctx0.sWrongSide = 185;  ctx0.sTractor = 235;  ctx0.sOvertake 
 % gap BEFORE it draws level. Derived from the lateral distance, the pass speed and the
 % crab-angle limit - all three of which are set elsewhere - plus the two half-lengths
 % and a margin. Hand-picking this number failed twice; see sc.s1drive.
-CRAB = 12;  PASS_V = 8/3.6;  LANE_E = 1.75;
+PASS_V = 8/3.6;  LANE_E = 1.75;
 latNeed = abs(ctx0.passE - LANE_E);
-tLat    = latNeed / (tand(CRAB) * PASS_V);
-ctx0.commitRunUp = PASS_V*tLat + zd(1)/2 + cd(1)/2 + 3.0;
+% RE-DERIVED BY SIMULATING THE ACTUAL LATERAL MODEL (sc.lateralStep), not a
+% closed-form estimate of it. The old formula (latNeed / (tand(CRAB)*PASS_V))
+% was exact for the OLD flat-rate motion; sc.lateralStep's ease-in/ease-out
+% covers the same distance more slowly (lower average rate than its own
+% peak), so reusing that formula under the new model would understate the
+% run-up needed - the identical class of error "hand-picking this number
+% failed twice" already warns about, just arriving from the model changing
+% under it instead of from a bad guess.
+[eSim, evSim, tSim] = deal(LANE_E, 0, 0);
+while abs(eSim - ctx0.passE) > 1e-3 && tSim < 60
+    [eSim, evSim] = sc.lateralStep(eSim, evSim, ctx0.passE, PASS_V, DT);
+    tSim = tSim + DT;
+end
+ctx0.commitRunUp = PASS_V*tSim + zd(1)/2 + cd(1)/2 + 3.0;
 fprintf('geometry: free %.2f m | ego %.2f m | margin %.3f m each side | pass at e=%+.3f m\n', ...
         ctx0.freeWidth, cd(2), ctx0.margin, ctx0.passE);
-fprintf('lateral move %.2f m at %.2f m/s crab-limited -> stop %.1f m short of her\n', ...
-        latNeed, tand(CRAB)*PASS_V, ctx0.commitRunUp);
+fprintf('lateral move %.2f m, eased, takes %.2f s -> stop %.1f m short of her\n', ...
+        latNeed, tSim, ctx0.commitRunUp);
 
 % ---------------------------------------------------------------- PASS 1: the driver
 A_LON = 1.8; D_LON = 3.2; R_LAT = 0.75;       % accel, decel, lateral rate limits
@@ -273,8 +285,10 @@ function d = dimOf(n)
 end
 
 function [L, beats] = integrate(P, c, DT, T, aUp, aDn, rLat)
-%INTEGRATE  Step the ego against sc.s1drive under acceleration and lateral-rate limits.
-st = struct();  s = c.sStart;  e = 1.75;  v = 52/3.6;  n = round(T/DT);
+%INTEGRATE  Step the ego against sc.s1drive under acceleration-limited
+%   longitudinal AND lateral motion (sc.lateralStep) - a smooth ease in/out
+%   lane change, not a flat-rate slide that starts and stops instantly.
+st = struct();  s = c.sStart;  e = 1.75;  ev = 0;  v = 52/3.6;  n = round(T/DT);
 L = struct('t',zeros(1,n),'s',zeros(1,n),'e',zeros(1,n),'v',zeros(1,n), ...
            'State',strings(1,n),'Note',strings(1,n));
 beats = struct();
@@ -288,14 +302,7 @@ for i = 1:n
     dv = cmd.v - v;                              % rate-limited longitudinal
     v  = v + max(-aDn*DT, min(aUp*DT, dv));
     v  = max(0, v);
-    % LATERAL IS LIMITED BY CRAB ANGLE, NOT BY A FLAT m/s. A car cannot slide
-    % sideways: how fast it can change lateral position is set by how fast it is
-    % going. A flat 0.75 m/s at the 8 km/h pass speed is an 18.7 deg crab angle,
-    % which is not a car, and while STOPPED it would let the ego move sideways
-    % with the wheels still. 12 deg is a firm but real steering input.
-    rNow = min(rLat, tand(12) * v);
-    de = cmd.e - e;
-    e  = e + max(-rNow*DT, min(rNow*DT, de));
+    [e, ev] = sc.lateralStep(e, ev, cmd.e, v, DT, 'RateCap', rLat);
     s  = min(P.Len, s + v*DT);
     L.t(i)=t; L.s(i)=s; L.e(i)=e; L.v(i)=v; L.State(i)=st.State; L.Note(i)=st.Note;
 end

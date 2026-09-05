@@ -76,7 +76,7 @@ assert(abs(3.6*(vEarly-vLate) - A.YieldDrop_kmh) < 0.25, "sc:s2yield", ...
 n = round(T_END/DT);
 L = struct('t',zeros(1,n),'s',zeros(1,n),'e',zeros(1,n),'v',zeros(1,n), ...
            'State',strings(1,n),'Note',strings(1,n));
-st = struct();  s = ctx0.sStart;  e = 1.75;  v = V0;  beatsRaw = struct();
+st = struct();  s = ctx0.sStart;  e = 1.75;  ev = 0;  v = V0;  beatsRaw = struct();
 A_LON = 1.8;  D_LON = 3.2;
 for i = 1:n
     t = (i-1)*DT;
@@ -95,8 +95,9 @@ for i = 1:n
         beatsRaw.(char(st.State)) = struct('t',t,'s',s);
     end
     v = max(0, v + max(-D_LON*DT, min(A_LON*DT, cmd.v - v)));
-    rNow = min(0.75, tand(12)*v);
-    e = e + max(-rNow*DT, min(rNow*DT, cmd.e - e));
+    % SMOOTH EASE IN/OUT, not a flat-rate slide - see sc.lateralStep. Same
+    % physics cap (tand(12)*v) as before, now acceleration-limited on top.
+    [e, ev] = sc.lateralStep(e, ev, cmd.e, v, DT);
     s = min(P.Len, s + v*DT);
     L.t(i)=t; L.s(i)=s; L.e(i)=e; L.v(i)=v; L.State(i)=st.State; L.Note(i)=st.Note;
 end

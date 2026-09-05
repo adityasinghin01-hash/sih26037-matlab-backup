@@ -27,7 +27,10 @@ arguments
     opts.MPP   (1,1) double = 0.060         % metres per texture pixel ALONG the road,
                                             % held constant so the grain does not change
                                             % scale when the drawn window changes
-    opts.NV    (1,1) double = 128
+    opts.NV    (1,1) double = 160    % bumped from 128, 6 Sep, for sharper close-range
+                                     % detail under the chase camera - cheap: this
+                                     % scales the ONE-TIME cached texture generation,
+                                     % not the per-frame render cost
     opts.Lanes (1,1) double = 2
     opts.Seed  (1,1) double = 11
     opts.Contrast (1,1) double = 0.0561     % MEASURED. Do not tune this by eye.
@@ -93,10 +96,17 @@ rng(sPrev);
 % Weighted toward STREAKING over speckle. The 59 accepted dashcam crops are gently
 % mottled and streaked, not granular - at the scale a camera 1.35 m up actually sees
 % this road, per-texel speckle reads as film grain rather than as aggregate.
+% WHEEL-PATH DEFINITION RAISED 0.90->1.15, 6 SEP, NOT THE AGG:STR RATIO. The
+% agg:str weighting above is a MEASURED finding (the 59 dashcam crops are
+% mottled/streaked, not granular) and stays untouched - raising it would
+% contradict that evidence. This term is different: it is how visually
+% DISTINCT the worn tracks are from the dust between them, which S1's own
+% "aggregate showing in the wheel paths" already asks for more of, and it is
+% independent of the grain-vs-streak question.
 dev =  0.70 * agg .* (0.30 + 0.70*wp) ...           % aggregate, coarser where exposed
      + 1.00 * str ...                               % the dominant longitudinal streaking
      + 0.70 * blo ...                               % slow patchiness
-     + 0.90 * repmat(wp - mean(wp), 1, nU);         % the paths themselves
+     + 1.15 * repmat(wp - mean(wp), 1, nU);         % the paths themselves
 for k = 1:opts.Lanes                                % the oil line down each lane centre
     c = -halfWidth + lane*(2*k-1);
     dev = dev - 0.45 * repmat(exp(-((e-c)/0.16).^2), 1, nV*0+nU);
@@ -110,7 +120,11 @@ info.Patches = zeros(opts.Patches, 2);
 for p = 1:opts.Patches
     u0 = hash1(p*7.3 + opts.Seed);  v0 = 0.15 + 0.70*hash1(p*19.1 + opts.Seed);
     du = 0.004 + 0.010*hash1(p*3.1);  dv = 0.22 + 0.30*hash1(p*5.7);
-    dev = dev - 0.085 * (exp(-((uu-u0)/du).^8) .* exp(-((vv-v0)/dv).^8));
+    % DEPTH RAISED 0.085->0.13, 6 SEP - applied AFTER the CoV normalisation
+    % above, so this is a real, direct darkening, not something the
+    % renormalisation cancels out. S1 names these three as visibly "patched
+    % with darker fresh mix"; they were reading as faint blotches.
+    dev = dev - 0.13 * (exp(-((uu-u0)/du).^8) .* exp(-((vv-v0)/dv).^8));
     info.Patches(p,:) = [u0 v0];
 end
 

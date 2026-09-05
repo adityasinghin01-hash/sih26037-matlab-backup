@@ -306,12 +306,23 @@ for pk = 1:numel(PH_S)
         Tp = [xy(1) xy(2) Z_ROAD+0.003 diam/2 diam/2 1];
         S.instances(pfV, pfF, Tp, FRESH, 'Lighting','none');
     else
+        % CONTRAST RAISED, 6 SEP - checked from the REAL chase camera (not the
+        % steep diagnostic angle used to verify the mechanism), the tree
+        % shadows already on this road are large, soft and far higher-
+        % contrast than the first version of this gradient, and the two
+        % competed for the same visual space - a small subtle pothole read as
+        % just more shadow. Darker centre (0.35->0.20 base factor) and a
+        % tighter core (falloff exponent 1.3->2.2, so more of the radius
+        % stays near full darkness before blending out) makes a pothole read
+        % as a compact, hard anomaly rather than a soft sprawl - the opposite
+        % character from a tree shadow, which is what lets the eye tell them
+        % apart instead of one more shape in the same family.
         deep    = 0.030 + 0.060*rand01(sk*7.9);             % S1: 30-90 mm, sets DARKNESS
-        darkest = TARMAC .* (0.35 - 0.20*min(1, deep/0.09));% deeper -> darker centre
+        darkest = TARMAC .* (0.20 - 0.12*min(1, deep/0.09));% deeper -> darker centre
         for ring = 1:4
             g   = (ring-1)/3;                     % 0 centre (smallest,darkest) .. 1 rim
             rr  = (diam/2) * (0.25 + 0.75*g);
-            col = mix(darkest, TARMAC, g^1.3);      % g=1 blends fully into the road - no hard edge
+            col = mix(darkest, TARMAC, g^2.2);      % g=1 blends fully into the road - no hard edge
             zk  = Z_ROAD + 0.002 + 0.001*(4-ring);  % smallest ring drawn ON TOP, all clear of Z_ROAD
             Tp  = [xy(1) xy(2) zk rr rr 1];
             S.instances(pfV, pfF, Tp, col, 'Lighting','none');

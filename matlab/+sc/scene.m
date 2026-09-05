@@ -219,7 +219,14 @@ classdef scene < handle
             %
             %   Unlit, exactly as `flat` is. The road's grey is measured off dashcam
             %   frames (REF-17 s19h) and lighting it would move a measured number.
-            h = surface(o.Ax, X, Y, z*ones(size(X)), C, 'FaceColor','texturemap', ...
+            %
+            %   z MAY NOW BE A MATRIX matching X,Y, not just a scalar height - added
+            %   6 Sep for real pothole relief (sc.s1render), which needs actual Z
+            %   depth at specific grid vertices, not a flat plane with a picture on
+            %   it. A scalar still broadcasts exactly as before - every existing
+            %   caller is unaffected.
+            if isscalar(z), Z = z*ones(size(X)); else, Z = z; end
+            h = surface(o.Ax, X, Y, Z, C, 'FaceColor','texturemap', ...
                 'EdgeColor','none', 'FaceLighting','none');
         end
 

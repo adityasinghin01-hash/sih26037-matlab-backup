@@ -257,6 +257,68 @@ S.carpet(GXs, GYs, Z_SHLD, uint8(255*min(1, reshape(SHOULDER,1,1,3) .* Mshld)));
 Mtex = sc.roadTexture(CW/2, sB - sA);
 S.carpet(GX, GY, Z_ROAD, uint8(255*min(1, reshape(TARMAC,1,1,3) .* Mtex)));
 
+% ------------------------------------------------------------------ potholes
+% S1 "THE ROAD": 9 potholes at named stations, 0.25-0.9 m diameter, 30-90 mm
+% deep, "three patched with darker fresh mix".
+%
+% TWO THINGS TRIED AND ABANDONED BEFORE THIS ONE, BOTH FOUND BY LOOKING:
+%   1. Perturbing the road's own grid - rejected before building anything:
+%      `texturemap` stretches the road image evenly across however many grid
+%      COLUMNS exist, regardless of their real spacing, so densifying the
+%      shared grid near a pothole would stretch/distort the surrounding
+%      texture exactly where detail was being added.
+%   2. A real 3D bowl mesh (a lathe, unit radius 1 at the rim tapering to a
+%      depression at the centre), layered as its own instanced object. Built,
+%      and it rendered as a THIN RING OUTLINE with a hollow interior - proven
+%      by mapping the actual dark pixels, which formed a ring, not a filled
+%      shape. Cause: the flat road carpet is ONE CONTINUOUS SURFACE with no
+%      hole cut into it, so it simply occludes the bowl's interior from the
+%      camera - only the rim, right at the boundary, pokes past it. Cutting
+%      an actual hole in the shared grid re-opens problem 1's exact risk.
+%
+% WHAT'S HERE INSTEAD: a flat, unlit, RADIAL COLOUR GRADIENT - nested discs,
+% darkest at the centre, blending out to the exact road colour at the rim, so
+% there is no hard edge to occlude or fight. The same idiom this file already
+% uses for the clearing's own soft boundary (three nested rings blending
+% FLOOR into CLEARING) - proven, and it sidesteps the winding-direction
+% question entirely, since an unlit flat colour does not depend on which way
+% a face points. At 30-90 mm deep and this viewing distance a real pothole
+% mostly IS a colour/shadow cue, not a dramatic silhouette - this is a closer
+% match to how one actually reads from a moving car than a literal bowl was.
+%
+% PATCHED = STATIONS 240/241/243, NOT A RANDOM PICK. S1's own text calls these
+% three out as one cluster ("9 potholes clustered, not spaced... 240, 241,
+% 243") - a maintenance crew patches adjacent holes in one pass, so patching
+% exactly that trio is the reading the spec's own structure supports, not an
+% arbitrary choice among nine.
+PH_S       = [34 88 89 141 196 240 241 243 302];
+PH_PATCHED = ismember(PH_S, [240 241 243]);
+[pfV, pfF] = discMesh(12, 0, 1);   % plain flat disc - reused from the shadow stencil
+for pk = 1:numel(PH_S)
+    sk = PH_S(pk);
+    if sk < sA - 5 || sk > sB + 5, continue; end            % cull off-window
+    diam = 0.25 + 0.65*rand01(sk*3.1);                      % S1: 0.25-0.9 m
+    ek   = (rand01(sk*5.7) - 0.5) * 3.6;                    % clustered, not on one line
+    if abs(ek) > CW/2 - 0.4, ek = sign(ek)*(CW/2-0.4); end  % stay inside the carriageway
+    xy = P.at(sk, ek);
+    if PH_PATCHED(pk)
+        FRESH = mix(TARMAC, [0.42 0.40 0.36], 0.55);        % darker fresh mix, S1's words
+        Tp = [xy(1) xy(2) Z_ROAD+0.003 diam/2 diam/2 1];
+        S.instances(pfV, pfF, Tp, FRESH, 'Lighting','none');
+    else
+        deep    = 0.030 + 0.060*rand01(sk*7.9);             % S1: 30-90 mm, sets DARKNESS
+        darkest = TARMAC .* (0.35 - 0.20*min(1, deep/0.09));% deeper -> darker centre
+        for ring = 1:4
+            g   = (ring-1)/3;                     % 0 centre (smallest,darkest) .. 1 rim
+            rr  = (diam/2) * (0.25 + 0.75*g);
+            col = mix(darkest, TARMAC, g^1.3);      % g=1 blends fully into the road - no hard edge
+            zk  = Z_ROAD + 0.002 + 0.001*(4-ring);  % smallest ring drawn ON TOP, all clear of Z_ROAD
+            Tp  = [xy(1) xy(2) zk rr rr 1];
+            S.instances(pfV, pfF, Tp, col, 'Lighting','none');
+        end
+    end
+end
+
 % THE EDGE CRUMBLES, AND S1 SAYS SO IN METRES. "THE ROAD": "Edges crumble into dirt
 % over a RAGGED 100-300 mm band. No kerb." The carriageway was a clean mathematical
 % band, so tarmac met shoulder along a dead-straight line for 610 m - the one edge in

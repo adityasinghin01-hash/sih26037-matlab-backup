@@ -40,6 +40,10 @@ classdef scene < handle
                 opts.Width  (1,1) double = 1280
                 opts.Height (1,1) double = 720
                 opts.Hud    (1,1) logical = true
+                opts.Visible(1,1) logical = false   % true = a real, on-screen,
+                                                    % rotatable/zoomable window -
+                                                    % for looking at the world
+                                                    % interactively, not filming
                 % REF-13 s1, MEASURED off Aditya's own 43 photographs, plains set:
                 % zenith RGB 146.4/171.5/191.4 (sat 23.5 %), horizon 137.5/160.2/172.6
                 % (sat 20.3 %), hue ~204 deg. My guessed sky was 44.7 % at the zenith and
@@ -53,12 +57,17 @@ classdef scene < handle
             o.SunVec = [cosd(el)*sind(az), cosd(el)*cosd(az), sind(el)];
             if ~opts.Hud, o.HudFrac = 0; end
 
-            o.Fig = figure('Visible','off','Position',[0 0 o.Width o.Height], ...
+            vis = "off"; if opts.Visible, vis = "on"; end
+            o.Fig = figure('Visible',vis,'Position',[0 0 o.Width o.Height], ...
                            'Color',[0.09 0.10 0.12],'GraphicsSmoothing','on');
             o.Ax = axes(o.Fig,'Position',[0 o.HudFrac 1 1-o.HudFrac]);
             hold(o.Ax,'on'); axis(o.Ax,'off');
             daspect(o.Ax,[1 1 1]);                      % THE MANDATORY LINE
             set(o.Ax,'Projection','perspective','CameraUpVector',[0 0 1],'Clipping','off');
+            % mouse-drag to orbit, scroll to zoom - wrapped in try/catch because
+            % `-batch` has no real display even with Visible=true, and rotate3d
+            % throws there; a real interactive MATLAB session has one and works.
+            if opts.Visible, try rotate3d(o.Ax,'on'); catch, end, end
 
             % two lights, warm sun + cool sky fill
             light(o.Ax,'Style','infinite','Position',o.SunVec,'Color',[1.00 0.96 0.87]);

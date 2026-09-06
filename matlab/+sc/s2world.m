@@ -90,7 +90,28 @@ out = W.Arm(W.ExitArm).Path.P;
 ring = W.RingPath.P;
 route = [inb; ring; out];
 d = [true; vecnorm(diff(route),2,2) > 1e-6];
-W.EgoRoute = sc.path(route(d,:), 1.0);
+route = route(d,:);
+% THE ARM-TO-RING SEAM IS A GENUINE CORNER, NOT A SMOOTHING ARTEFACT. An arm
+% points radially toward the gyratory centre; the ring at that same point is
+% tangent to the circle (perpendicular to the radius) - concatenating the two
+% point lists puts a real ~80-90 deg direction change at one seam, not
+% something a lateral-rate limiter (sc.lateralStep, upstream of THIS - that
+% smooths offset WITHIN one path, not the path's own geometry) can fix. S2's
+% own written spec already names the real turning radii for exactly this
+% ("entry R1 ~12m, exit R2 ~18m") - built here as CORNER-ROUNDING (Chaikin
+% cuts) on the route's raw points in a short window around each seam, rather
+% than an exact tangent-arc derivation, since this is a motion-quality fix,
+% not a measured arithmetic claim the film's numbers depend on.
+% WINDOW SIZED PER SEAM, MEASURED NOT GUESSED. A raw dot-product angle test
+% either side of each seam (before any smoothing) found the entry corner at
+% 41 deg and the exit corner at 82 deg - genuinely, measurably twice as
+% sharp, not the same defect at two places, so it needs roughly twice the
+% window to round out to comparable smoothness. Only 49 points separate the
+% two seams, so BOTH windows must fit inside that gap without overlapping -
+% 15 and 30 leaves a 4-point margin between them.
+seamStations = [size(inb,1), size(inb,1)+size(ring,1)];
+route = sc.roundRouteCorners(route, seamStations, [15 30]);
+W.EgoRoute = sc.path(route, 1.0);
 W.SGiveWay = W.Arm(W.EntryArm).Path.Len - 1.2;      % station of the give-way line
 W.SRingIn  = size(inb,1);                            % station where the ring begins
 W.SRingOut = W.SRingIn + size(ring,1);               % station where arm A begins

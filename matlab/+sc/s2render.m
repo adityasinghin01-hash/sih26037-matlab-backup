@@ -283,8 +283,25 @@ for k = 1:4
 end
 
 % ---------------------------------------------------------------- verges and fencing
-% S2/SPEC: post-and-rail fence separating grass from tarmac. Massed, not detailed.
+% S2/SPEC: post-and-rail fence separating grass from tarmac. "Massed, not detailed"
+% is the spec's OWN call here, not an oversight - at ~114 posts around the gyratory,
+% a heavily detailed fence would work against both that written intent and render
+% speed. What changed, 6 Sep: Blender-authored geometry (octagonal chamfered post,
+% rounded-edge rail - blend/vehicles/fence.py) instead of sc.box3's flat cuboids, 72
+% triangles total, batched into ONE instanced patch per part exactly like every other
+% repeated prop on this road (grass, scrub) rather than one graphics object per post -
+% both a real shape upgrade and, unlike the old per-call box3 loop, no added cost.
+persistent FENCE_POST FENCE_RAIL
+if isempty(FENCE_POST)
+    try
+        [fpv, fpf] = rawSTL2("fence_post"); FENCE_POST = struct('V',fpv,'F',fpf);
+        [frv, frf] = rawSTL2("fence_rail"); FENCE_RAIL = struct('V',frv,'F',frf);
+    catch
+        FENCE_POST = struct('V',[]); FENCE_RAIL = struct('V',[]);
+    end
+end
 nPost = 0;
+Tpost = zeros(0,6); Trail = zeros(0,6); railYaw = zeros(0,1);
 for k = 1:4
     P = W.Arm(k).Path;
     for sgn = [-1 1]
@@ -296,7 +313,7 @@ for k = 1:4
             % carriageway the planner drives. Found by looking at the approach shot.
             % Nothing may be planted where any arm, or the ring, is drivable.
             if onAnyRoad(W, xy, C), continue; end
-            S.box3(xy, [0.10 0.10 1.05], GZ, 0, [0.46 0.40 0.31]);
+            Tpost(end+1,:) = [xy(1) xy(2) GZ 1 1 1];                    %#ok<AGROW>
             nPost = nPost + 1;
             % POST-AND-RAIL. The first version drew only posts, so the fence read as
             % sticks pushed into the verge at random. Two rails between consecutive
@@ -305,13 +322,28 @@ for k = 1:4
                 xy2 = P.at(s + 4.5, sgn*(W.ArmW/2 + 2.2));
                 if onAnyRoad(W, xy2, C), continue; end
                 mid = (xy + xy2)/2;
+                spanLen = hypot(xy2(1)-xy(1), xy2(2)-xy(2));
                 ang = atan2(xy2(2)-xy(2), xy2(1)-xy(1));
                 for rz = [0.42 0.82]
-                    S.box3(mid, [4.5 0.05 0.09], GZ + rz, ang, [0.44 0.38 0.30]);
+                    % rail is UNIT LENGTH along x with its real cross-section already
+                    % baked in, so sx=spanLen stretches it and sy=sz=1 keeps the
+                    % 0.05 x 0.09 m section exact - same scaling contract every other
+                    % instanced prop in this file uses.
+                    Trail(end+1,:) = [mid(1) mid(2) GZ+rz spanLen 1 1];  %#ok<AGROW>
+                    railYaw(end+1,1) = ang;                              %#ok<AGROW>
                 end
             end
         end
     end
+end
+if ~isempty(FENCE_POST.V) && ~isempty(Tpost)
+    S.instances(FENCE_POST.V, FENCE_POST.F, Tpost, ...
+        repmat([0.46 0.40 0.31], size(Tpost,1), 1), 'Ambient', 0.40, 'Smooth', false);
+end
+if ~isempty(FENCE_RAIL.V) && ~isempty(Trail)
+    S.instances(FENCE_RAIL.V, FENCE_RAIL.F, Trail, ...
+        repmat([0.44 0.38 0.30], size(Trail,1), 1), 'Ambient', 0.40, ...
+        'Yaw', railYaw, 'Smooth', false);
 end
 
 % ---------------------------------------------------------------- grass, per REF-11 s2

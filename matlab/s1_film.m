@@ -58,6 +58,11 @@ nF = floor(log1.t(end)*FPS);
 S = sc.scene('Width', 1280, 'Height', 720);
 S.startFilm(outMp4, FPS);
 focusS = -inf;  actH = gobjects(0);  t0 = tic;
+% WALKING LEGS - see sc.zebuWalkLegs. ZCOL is per-face for the BODY mesh's own
+% face count and cannot be reused here; the leg mesh needs its own single
+% colour, matched to sc.zebuColours' own FAWN (its module-level constant, not
+% importable, so restated - REF-04: "Light fawn, paler underside").
+LEGCOL = [0.60 0.52 0.40];  cowPrevXY = [];  cowDist = 0;
 
 for k = 1:nF
     t = (k-1)/FPS;
@@ -80,6 +85,30 @@ for k = 1:nF
         nm = who(pp(q).ActorID);
         if strcmp(nm,'cow'), cc = ZCOL; else, cc = COL.(nm); end
         actH = [actH S.mesh(MESH.(nm), [pp(q).Position(1:2), deg2rad(pp(q).Yaw)], cc)]; %#ok<AGROW>
+        % WALKING LEGS, THE ONE ACTUAL WALKING COW ONLY - not every actor
+        % named 'cow'. s1_action_run.m gives the three static HERD members
+        % the SAME 'cow' label (who(h.ActorID)='cow' for h in A.Herd), which
+        % is correct for drawing/dims but wrong for this: keying leg motion
+        % off the shared NAME made cowDist accumulate the distance BETWEEN
+        % unrelated actors as q iterated across frames - one bad render
+        % showed ~97 m/s, caught before it reached the real film. A.Cow's
+        % own ActorID is the one true identity check.
+        if pp(q).ActorID == A.Cow.ActorID
+            cowXY = pp(q).Position(1:2);  cowYaw = deg2rad(pp(q).Yaw);
+            % distTraveled advances only while she actually
+            % moves - the moment she stops, frame-to-frame delta is ~0 and
+            % the legs freeze wherever they are, which is the honest
+            % simplification this carries: no eased return to a neutral
+            % standing pose, just a mid-stride hold. Far better than a
+            % moving body on static legs, which is the defect this exists
+            % to fix - not a claim of a fully finished walk cycle.
+            if ~isempty(cowPrevXY)
+                cowDist = cowDist + hypot(cowXY(1)-cowPrevXY(1), cowXY(2)-cowPrevXY(2));
+            end
+            cowPrevXY = cowXY;
+            [Vl, Fl] = sc.zebuWalkLegs(cowXY, cowYaw, cowDist);
+            actH = [actH S.mesh(struct('Vertices',Vl,'Faces',Fl), [0 0 0], LEGCOL)]; %#ok<AGROW>
+        end
     end
     actH = [actH S.mesh(MESH.car, [exy, ehd], CCOL)]; %#ok<AGROW>
     % 'Ahead' WAS 13 AND IT PUT THE EGO'S BOTTOM EDGE EXACTLY ON THE HUD STRIP.
